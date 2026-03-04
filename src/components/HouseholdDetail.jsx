@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getHouseholdById, getMembersByHousehold, updateHousehold, updateMember, createMember, deleteMember } from '../utils/localDataService';
 import { getHouseholdDataArray, formatMemberRow } from '../utils/excelGenerator';
+import { exportToExcel } from '../utils/excelExportService';
 import { loadGoogleScripts, handleGoogleLogin, createSpreadsheet, addSheetToSpreadsheet, writeDataToSheet, formatSheet, getSpreadsheet, clearSheet, readSheetData, deleteRow, appendDataToSheet, updateRowInSheet } from '../utils/googleSheetsService';
 import ConfirmationModal from './ConfirmationModal';
 
@@ -29,10 +30,10 @@ const HouseholdDetail = ({ householdId, onBack, lang, translations }) => {
 
     const fetchData = async () => {
         try {
-            const h = getHouseholdById(householdId);
+            const h = await getHouseholdById(householdId);
             setHousehold(h);
 
-            let memberList = getMembersByHousehold(householdId);
+            let memberList = await getMembersByHousehold(householdId);
 
             // Check if head is in members, if not add from household data
             const hasHead = memberList.some(m => m.relationship === 'Chủ hộ');
@@ -58,7 +59,7 @@ const HouseholdDetail = ({ householdId, onBack, lang, translations }) => {
                 };
                 memberList = [headMember, ...memberList];
             }
-            
+
             setMembers(memberList);
         } catch (error) {
             console.error(error);
@@ -100,23 +101,23 @@ const HouseholdDetail = ({ householdId, onBack, lang, translations }) => {
                     if (isGoogleReady) {
                         const spreadsheetId = localStorage.getItem('household_g_sheet_id');
                         if (spreadsheetId) {
-                             try {
-                                 await handleGoogleLogin();
-                                 const spreadsheet = await getSpreadsheet(spreadsheetId);
-                                 let baseName = household.head_name ? household.head_name.trim() : `Household_${household.id}`;
-                                 let sheetName = baseName.replace(/[\\/?*[\]:]/g, "").substring(0, 30);
-                                 let targetSheet = spreadsheet.sheets.find(s => s.properties.title === sheetName);
-                                 if (!targetSheet) targetSheet = spreadsheet.sheets.find(s => s.properties.title === `${sheetName}_${household.id}`);
+                            try {
+                                await handleGoogleLogin();
+                                const spreadsheet = await getSpreadsheet(spreadsheetId);
+                                let baseName = household.head_name ? household.head_name.trim() : `Household_${household.id}`;
+                                let sheetName = baseName.replace(/[\\/?*[\]:]/g, "").substring(0, 30);
+                                let targetSheet = spreadsheet.sheets.find(s => s.properties.title === sheetName);
+                                if (!targetSheet) targetSheet = spreadsheet.sheets.find(s => s.properties.title === `${sheetName}_${household.id}`);
 
-                                 if (targetSheet) {
-                                     const updatedHousehold = { ...household, ...householdUpdate };
-                                     const updatedMembers = members.map(m => m.id === editingMember.id ? { ...m, ...memberForm } : m);
-                                     const sheetData = getHouseholdDataArray(updatedHousehold, updatedMembers);
-                                     await clearSheet(spreadsheetId, targetSheet.properties.sheetId);
-                                     await writeDataToSheet(spreadsheetId, targetSheet.properties.title, sheetData);
-                                     await formatSheet(spreadsheetId, targetSheet.properties.sheetId, sheetData.length);
-                                 }
-                             } catch (err) { console.error("Sheet sync error", err); }
+                                if (targetSheet) {
+                                    const updatedHousehold = { ...household, ...householdUpdate };
+                                    const updatedMembers = members.map(m => m.id === editingMember.id ? { ...m, ...memberForm } : m);
+                                    const sheetData = getHouseholdDataArray(updatedHousehold, updatedMembers);
+                                    await clearSheet(spreadsheetId, targetSheet.properties.sheetId);
+                                    await writeDataToSheet(spreadsheetId, targetSheet.properties.title, sheetData);
+                                    await formatSheet(spreadsheetId, targetSheet.properties.sheetId, sheetData.length);
+                                }
+                            } catch (err) { console.error("Sheet sync error", err); }
                         }
                     }
                 } else {
@@ -126,27 +127,27 @@ const HouseholdDetail = ({ householdId, onBack, lang, translations }) => {
                     if (isGoogleReady) {
                         const spreadsheetId = localStorage.getItem('household_g_sheet_id');
                         if (spreadsheetId) {
-                             try {
-                                 await handleGoogleLogin();
-                                 const spreadsheet = await getSpreadsheet(spreadsheetId);
-                                 let baseName = household.head_name ? household.head_name.trim() : `Household_${household.id}`;
-                                 let sheetName = baseName.replace(/[\\/?*[\]:]/g, "").substring(0, 30);
-                                 let targetSheet = spreadsheet.sheets.find(s => s.properties.title === sheetName);
-                                 if (!targetSheet) targetSheet = spreadsheet.sheets.find(s => s.properties.title === `${sheetName}_${household.id}`);
+                            try {
+                                await handleGoogleLogin();
+                                const spreadsheet = await getSpreadsheet(spreadsheetId);
+                                let baseName = household.head_name ? household.head_name.trim() : `Household_${household.id}`;
+                                let sheetName = baseName.replace(/[\\/?*[\]:]/g, "").substring(0, 30);
+                                let targetSheet = spreadsheet.sheets.find(s => s.properties.title === sheetName);
+                                if (!targetSheet) targetSheet = spreadsheet.sheets.find(s => s.properties.title === `${sheetName}_${household.id}`);
 
-                                 if (targetSheet) {
-                                     const rows = await readSheetData(spreadsheetId, `${targetSheet.properties.title}!A1:M200`);
-                                     if (rows && rows.length > 0) {
-                                         const rowIndex = rows.findIndex(r => r[12] == editingMember.id);
-                                         if (rowIndex !== -1) {
-                                             const updatedMember = { ...memberForm, id: editingMember.id };
-                                             const currentSTT = rows[rowIndex][0];
-                                             const rowData = formatMemberRow(updatedMember, currentSTT - 1);
-                                             await updateRowInSheet(spreadsheetId, `${targetSheet.properties.title}!A${rowIndex + 1}:M${rowIndex + 1}`, [rowData]);
-                                         }
-                                     }
-                                 }
-                             } catch (err) { console.error("Sheet sync error", err); }
+                                if (targetSheet) {
+                                    const rows = await readSheetData(spreadsheetId, `${targetSheet.properties.title}!A1:M200`);
+                                    if (rows && rows.length > 0) {
+                                        const rowIndex = rows.findIndex(r => r[12] == editingMember.id);
+                                        if (rowIndex !== -1) {
+                                            const updatedMember = { ...memberForm, id: editingMember.id };
+                                            const currentSTT = rows[rowIndex][0];
+                                            const rowData = formatMemberRow(updatedMember, currentSTT - 1);
+                                            await updateRowInSheet(spreadsheetId, `${targetSheet.properties.title}!A${rowIndex + 1}:M${rowIndex + 1}`, [rowData]);
+                                        }
+                                    }
+                                }
+                            } catch (err) { console.error("Sheet sync error", err); }
                         }
                     }
                 }
@@ -157,23 +158,23 @@ const HouseholdDetail = ({ householdId, onBack, lang, translations }) => {
                 if (isGoogleReady) {
                     const spreadsheetId = localStorage.getItem('household_g_sheet_id');
                     if (spreadsheetId) {
-                         try {
-                             await handleGoogleLogin();
-                             const spreadsheet = await getSpreadsheet(spreadsheetId);
-                             let baseName = household.head_name ? household.head_name.trim() : `Household_${household.id}`;
-                             let sheetName = baseName.replace(/[\\/?*[\]:]/g, "").substring(0, 30);
-                             let targetSheet = spreadsheet.sheets.find(s => s.properties.title === sheetName);
-                             if (!targetSheet) targetSheet = spreadsheet.sheets.find(s => s.properties.title === `${sheetName}_${household.id}`);
+                        try {
+                            await handleGoogleLogin();
+                            const spreadsheet = await getSpreadsheet(spreadsheetId);
+                            let baseName = household.head_name ? household.head_name.trim() : `Household_${household.id}`;
+                            let sheetName = baseName.replace(/[\\/?*[\]:]/g, "").substring(0, 30);
+                            let targetSheet = spreadsheet.sheets.find(s => s.properties.title === sheetName);
+                            if (!targetSheet) targetSheet = spreadsheet.sheets.find(s => s.properties.title === `${sheetName}_${household.id}`);
 
-                             if (targetSheet) {
-                                 const newMemberRow = { ...memberForm, id: newMember.id, household_id: householdId };
-                                 const updatedMembers = [...members, newMemberRow];
-                                 const sheetData = getHouseholdDataArray(household, updatedMembers);
-                                 await clearSheet(spreadsheetId, targetSheet.properties.sheetId);
-                                 await writeDataToSheet(spreadsheetId, targetSheet.properties.title, sheetData);
-                                 await formatSheet(spreadsheetId, targetSheet.properties.sheetId, sheetData.length);
-                             }
-                         } catch (err) { console.error("Sheet sync error", err); }
+                            if (targetSheet) {
+                                const newMemberRow = { ...memberForm, id: newMember.id, household_id: householdId };
+                                const updatedMembers = [...members, newMemberRow];
+                                const sheetData = getHouseholdDataArray(household, updatedMembers);
+                                await clearSheet(spreadsheetId, targetSheet.properties.sheetId);
+                                await writeDataToSheet(spreadsheetId, targetSheet.properties.title, sheetData);
+                                await formatSheet(spreadsheetId, targetSheet.properties.sheetId, sheetData.length);
+                            }
+                        } catch (err) { console.error("Sheet sync error", err); }
                     }
                 }
             }
@@ -199,45 +200,45 @@ const HouseholdDetail = ({ householdId, onBack, lang, translations }) => {
             onConfirm: async () => {
                 try {
                     await deleteMember(id);
-                    
+
                     // Ask for Google Sheet deletion
                     if (isGoogleReady) {
                         const spreadsheetId = localStorage.getItem('household_g_sheet_id');
                         if (spreadsheetId) {
-                             try {
-                                 await handleGoogleLogin();
-                                 const spreadsheet = await getSpreadsheet(spreadsheetId);
-                                 
-                                 // Find Sheet Name
-                                 let baseName = household.head_name ? household.head_name.trim() : `Household_${household.id}`;
-                                 let sheetName = baseName.replace(/[\\/?*[\]:]/g, "").substring(0, 30);
-                                 
-                                 let targetSheet = spreadsheet.sheets.find(s => s.properties.title === sheetName);
-                                 if (!targetSheet) {
-                                     targetSheet = spreadsheet.sheets.find(s => s.properties.title === `${sheetName}_${household.id}`);
-                                 }
-                                 
-                                 if (targetSheet) {
-                                     // Find row by ID
-                                     const rows = await readSheetData(spreadsheetId, `${targetSheet.properties.title}!A1:M200`);
-                                     if (rows && rows.length > 0) {
-                                         const rowIndex = rows.findIndex(r => r[12] == id); 
-                                         if (rowIndex !== -1) {
-                                             await deleteRow(spreadsheetId, targetSheet.properties.sheetId, rowIndex);
-                                         } else {
-                                             const member = members.find(m => m.id === id);
-                                             if (member) {
-                                                 const fuzzyIndex = rows.findIndex(r => r[1] === member.name && r[2] === member.relationship);
-                                                 if (fuzzyIndex !== -1) {
-                                                     await deleteRow(spreadsheetId, targetSheet.properties.sheetId, fuzzyIndex);
-                                                 }
-                                             }
-                                         }
-                                     }
-                                 }
-                             } catch (e) {
-                                 console.error("Sheet delete row error", e);
-                             }
+                            try {
+                                await handleGoogleLogin();
+                                const spreadsheet = await getSpreadsheet(spreadsheetId);
+
+                                // Find Sheet Name
+                                let baseName = household.head_name ? household.head_name.trim() : `Household_${household.id}`;
+                                let sheetName = baseName.replace(/[\\/?*[\]:]/g, "").substring(0, 30);
+
+                                let targetSheet = spreadsheet.sheets.find(s => s.properties.title === sheetName);
+                                if (!targetSheet) {
+                                    targetSheet = spreadsheet.sheets.find(s => s.properties.title === `${sheetName}_${household.id}`);
+                                }
+
+                                if (targetSheet) {
+                                    // Find row by ID
+                                    const rows = await readSheetData(spreadsheetId, `${targetSheet.properties.title}!A1:M200`);
+                                    if (rows && rows.length > 0) {
+                                        const rowIndex = rows.findIndex(r => r[12] == id);
+                                        if (rowIndex !== -1) {
+                                            await deleteRow(spreadsheetId, targetSheet.properties.sheetId, rowIndex);
+                                        } else {
+                                            const member = members.find(m => m.id === id);
+                                            if (member) {
+                                                const fuzzyIndex = rows.findIndex(r => r[1] === member.name && r[2] === member.relationship);
+                                                if (fuzzyIndex !== -1) {
+                                                    await deleteRow(spreadsheetId, targetSheet.properties.sheetId, fuzzyIndex);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch (e) {
+                                console.error("Sheet delete row error", e);
+                            }
                         }
                     }
 
@@ -259,8 +260,11 @@ const HouseholdDetail = ({ householdId, onBack, lang, translations }) => {
 
     const updateSheetFormat = async () => {
         if (!isGoogleReady) {
-            alert("Đang tải thư viện Google, vui lòng đợi...");
-            return;
+            const success = await loadGoogleScripts(() => setIsGoogleReady(true));
+            if (!success) {
+                alert("Lỗi: Không thể tải thư viện Google.\nVui lòng kiểm tra kết nối Internet của bạn và thử lại.");
+                return;
+            }
         }
         if (!sheetId) return;
 
@@ -269,13 +273,13 @@ const HouseholdDetail = ({ householdId, onBack, lang, translations }) => {
         try {
             await handleGoogleLogin();
             const spreadsheet = await getSpreadsheet(sheetId);
-            
+
             // Find Sheet
             let baseName = household.head_name ? household.head_name.trim() : `Household_${household.id}`;
             let sheetName = baseName.replace(/[\\/?*[\]:]/g, "").substring(0, 30);
             let targetSheet = spreadsheet.sheets.find(s => s.properties.title === sheetName);
             if (!targetSheet) targetSheet = spreadsheet.sheets.find(s => s.properties.title === `${sheetName}_${household.id}`);
-            
+
             if (targetSheet) {
                 const sheetData = getHouseholdDataArray(household, members);
                 await clearSheet(sheetId, targetSheet.properties.sheetId);
@@ -293,8 +297,11 @@ const HouseholdDetail = ({ householdId, onBack, lang, translations }) => {
 
     const exportGoogleSheets = async () => {
         if (!isGoogleReady) {
-            alert("Đang tải thư viện Google, vui lòng thử lại sau vài giây...");
-            return;
+            const success = await loadGoogleScripts(() => setIsGoogleReady(true));
+            if (!success) {
+                alert("Lỗi: Không thể tải thư viện Google.\nVui lòng kiểm tra kết nối Internet của bạn và thử lại.");
+                return;
+            }
         }
 
         if (!household || members.length === 0) {
@@ -311,7 +318,7 @@ const HouseholdDetail = ({ householdId, onBack, lang, translations }) => {
                 try {
                     // 1. Login
                     await handleGoogleLogin();
-                    
+
                     // 2. Check for existing spreadsheet
                     let spreadsheetId = localStorage.getItem('household_g_sheet_id');
                     let spreadsheet;
@@ -319,12 +326,12 @@ const HouseholdDetail = ({ householdId, onBack, lang, translations }) => {
 
                     // Force Create New if linked, with confirmation
                     if (spreadsheetId) {
-                         if (confirm("Hệ thống đang liên kết với một Google Sheet. Bạn có muốn tạo một file MỚI và thay thế liên kết hiện tại không?\n(Chọn Cancel để hủy thao tác)")) {
-                             spreadsheetId = null;
-                         } else {
-                             setConfirmModal(prev => ({ ...prev, isOpen: false }));
-                             return;
-                         }
+                        if (confirm("Hệ thống đang liên kết với một Google Sheet. Bạn có muốn tạo một file MỚI và thay thế liên kết hiện tại không?\n(Chọn Cancel để hủy thao tác)")) {
+                            spreadsheetId = null;
+                        } else {
+                            setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                            return;
+                        }
                     }
 
                     if (!spreadsheetId) {
@@ -356,7 +363,7 @@ const HouseholdDetail = ({ householdId, onBack, lang, translations }) => {
                         targetSheetId = existingSheets[sheetName];
                         await clearSheet(spreadsheetId, targetSheetId);
                     } else if (isNew) {
-                         // Rename default Sheet1
+                        // Rename default Sheet1
                         targetSheetId = firstSheetId;
                         await window.gapi.client.sheets.spreadsheets.batchUpdate({
                             spreadsheetId,
@@ -370,7 +377,7 @@ const HouseholdDetail = ({ householdId, onBack, lang, translations }) => {
                             }
                         });
                     } else {
-                         // Add new sheet
+                        // Add new sheet
                         try {
                             const addRes = await addSheetToSpreadsheet(spreadsheetId, sheetName);
                             targetSheetId = addRes.replies[0].addSheet.properties.sheetId;
@@ -378,9 +385,9 @@ const HouseholdDetail = ({ householdId, onBack, lang, translations }) => {
                             // Fallback
                             const altName = `${sheetName}_${household.id}`;
                             if (existingSheets[altName] !== undefined) {
-                                    targetSheetId = existingSheets[altName];
-                                    await clearSheet(spreadsheetId, targetSheetId);
-                                    sheetName = altName;
+                                targetSheetId = existingSheets[altName];
+                                await clearSheet(spreadsheetId, targetSheetId);
+                                sheetName = altName;
                             } else {
                                 const addRes = await addSheetToSpreadsheet(spreadsheetId, altName);
                                 targetSheetId = addRes.replies[0].addSheet.properties.sheetId;
@@ -400,14 +407,11 @@ const HouseholdDetail = ({ householdId, onBack, lang, translations }) => {
 
                 } catch (error) {
                     console.error("Google Sheet Export Error:", error);
-                    let msg = "Có lỗi xảy ra!";
-                    if (error.message === "Google Scripts not loaded") msg = "Thư viện chưa tải xong.";
-                    if (error.result && error.result.error && error.result.error.code === 403) msg = "Bạn không có quyền truy cập bảng tính này.";
-                    if (error.error === "access_denied") msg = "Bạn đã từ chối cấp quyền.";
-                    if (JSON.stringify(error).includes("API key not valid")) {
-                        msg = "Chưa cấu hình API Key trong mã nguồn.";
+                    let errMsg = error.message || error;
+                    if (typeof error === 'object' && error.result && error.result.error) {
+                        errMsg = error.result.error.message;
                     }
-                    alert(msg);
+                    alert(`Lỗi: ${errMsg}`);
                     setConfirmModal(prev => ({ ...prev, isOpen: false }));
                 }
             }
@@ -428,20 +432,26 @@ const HouseholdDetail = ({ householdId, onBack, lang, translations }) => {
                     <button className="btn-header-gray" onClick={onBack}>
                         {t.back_list || "Danh sách"}
                     </button>
+                    <button className="btn-header-green" onClick={() => {
+                        const data = getHouseholdDataArray(household, members);
+                        exportToExcel(household, members, data, household.head_name ? `Ho_${household.head_name}` : `Household_${household.id}`);
+                    }} style={{ backgroundColor: '#217346', marginRight: '5px' }}>
+                        Xuất Excel (Offline)
+                    </button>
                     {sheetId && (
-                        <button className="btn-header-green" onClick={() => window.open(`https://docs.google.com/spreadsheets/d/${sheetId}`, '_blank')} style={{backgroundColor: '#0F9D58', marginRight: '5px'}}>
+                        <button className="btn-header-green" onClick={() => window.open(`https://docs.google.com/spreadsheets/d/${sheetId}`, '_blank')} style={{ backgroundColor: '#0F9D58', marginRight: '5px' }}>
                             {t.open_sheet || "Mở Google Sheet"}
                         </button>
                     )}
                     {sheetId && (
-                        <button className="btn-header-green" onClick={updateSheetFormat} style={{backgroundColor: '#fbbc04', color: '#000', marginRight: '5px'}}>
+                        <button className="btn-header-green" onClick={updateSheetFormat} style={{ backgroundColor: '#fbbc04', color: '#000', marginRight: '5px' }}>
                             {t.update_format || "Cập nhật định dạng"}
                         </button>
                     )}
-                    <button className="btn-header-green" onClick={exportGoogleSheets} style={{backgroundColor: '#1a73e8'}}>
+                    <button className="btn-header-green" onClick={exportGoogleSheets} style={{ backgroundColor: '#1a73e8' }}>
                         {t.export_new || "Xuất file mới"}
                     </button>
-                    <button className="btn-header-blue" onClick={() => { setEditingMember(null); setMemberForm({name: '', relationship: '', gender: 'nam', birthdate: '', cccd: '', occupation: '', ethnicity: '', permanent_address: '', current_address: '', phone: ''}); setShowMemberModal(true); }}>
+                    <button className="btn-header-blue" onClick={() => { setEditingMember(null); setMemberForm({ name: '', relationship: '', gender: 'nam', birthdate: '', cccd: '', occupation: '', ethnicity: '', permanent_address: '', current_address: '', phone: '' }); setShowMemberModal(true); }}>
                         {t.add_member || "Thêm thành viên"}
                     </button>
                 </div>
@@ -454,10 +464,14 @@ const HouseholdDetail = ({ householdId, onBack, lang, translations }) => {
                         <tr>
                             <th>{t.no || "STT"}</th>
                             <th>{t.name || "Thành viên"}</th>
-                            <th>{t.cccd || "CCCD"}</th>
-                            <th>{t.role || "Vai trò"}</th>
                             <th>{t.relationship_head || "Quan hệ với chủ hộ"}</th>
-                            <th style={{textAlign: 'center'}}>{t.actions || "Hành động"}</th>
+                            <th>{t.gender || "Giới tính"}</th>
+                            <th>{t.birthdate || "Ngày sinh"}</th>
+                            <th>{t.cccd || "CCCD"}</th>
+                            <th>{t.ethnicity || "Dân tộc"}</th>
+                            <th>{t.occupation || "Nghề nghiệp"}</th>
+                            <th>{t.phone || "SĐT"}</th>
+                            <th style={{ textAlign: 'center' }}>{t.actions || "Hành động"}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -465,17 +479,21 @@ const HouseholdDetail = ({ householdId, onBack, lang, translations }) => {
                             <tr key={m.id}>
                                 <td>{index + 1}</td>
                                 <td>{m.name}</td>
-                                <td>{m.cccd}</td>
-                                <td>{m.relationship === 'Chủ hộ' ? 'Chủ hộ' : 'Thành viên'}</td>
                                 <td>{m.relationship}</td>
-                                <td style={{textAlign: 'center'}}>
-                                    <div style={{display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-start', width: '110px'}}>
-                                        <input type="checkbox" className="action-checkbox" style={{margin: '0 8px 0 0'}} />
+                                <td>{m.gender === 'nam' || m.gender === 'Nam' ? (t.male || 'Nam') : m.gender === 'nu' || m.gender === 'Nữ' || m.gender === 'nữ' ? (t.female || 'Nữ') : m.gender}</td>
+                                <td>{m.birthdate}</td>
+                                <td>{m.cccd}</td>
+                                <td>{m.ethnicity}</td>
+                                <td>{m.occupation || m.job}</td>
+                                <td>{m.phone}</td>
+                                <td style={{ textAlign: 'center' }}>
+                                    <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-start', width: '110px' }}>
+                                        <input type="checkbox" className="action-checkbox" style={{ margin: '0 8px 0 0' }} />
                                         <span className="action-text-btn edit" onClick={() => openEditMember(m)}>
                                             {t.edit || "Sửa"}
                                         </span>
                                         {m.relationship !== 'Chủ hộ' && (
-                                            <span className="action-text-btn delete" onClick={() => handleDeleteMember(m.id)} style={{marginLeft: '8px'}}>
+                                            <span className="action-text-btn delete" onClick={() => handleDeleteMember(m.id)} style={{ marginLeft: '8px' }}>
                                                 {t.delete_short || "Xóa"}
                                             </span>
                                         )}
@@ -485,7 +503,7 @@ const HouseholdDetail = ({ householdId, onBack, lang, translations }) => {
                         ))}
                         {members.length === 0 && (
                             <tr>
-                                <td colSpan="6" style={{textAlign: 'center', padding: '20px'}}>
+                                <td colSpan="6" style={{ textAlign: 'center', padding: '20px' }}>
                                     {t.no_data || "Không có dữ liệu"}
                                 </td>
                             </tr>
@@ -505,14 +523,14 @@ const HouseholdDetail = ({ householdId, onBack, lang, translations }) => {
                         <div className="modal-body">
                             <div className="modal-form-grid">
                                 <h3 className="section-subtitle full-width">{t.member_info || "Thông tin thành viên"}</h3>
-                                
+
                                 <div className="floating-group">
-                                    <input required value={memberForm.name} onChange={e => setMemberForm({...memberForm, name: e.target.value})} placeholder=" " />
+                                    <input required value={memberForm.name} onChange={e => setMemberForm({ ...memberForm, name: e.target.value })} placeholder=" " />
                                     <label>{t.name || "Họ và tên"}</label>
                                 </div>
 
                                 <div className="floating-group">
-                                    <select required value={memberForm.relationship} onChange={e => setMemberForm({...memberForm, relationship: e.target.value})}>
+                                    <select required value={memberForm.relationship} onChange={e => setMemberForm({ ...memberForm, relationship: e.target.value })}>
                                         <option value=""></option>
                                         {(editingMember && editingMember.relationship === 'Chủ hộ') && (
                                             <option value="Chủ hộ">{t.chuho || "Chủ hộ"}</option>
@@ -526,7 +544,7 @@ const HouseholdDetail = ({ householdId, onBack, lang, translations }) => {
                                 </div>
 
                                 <div className="floating-group">
-                                    <select value={memberForm.gender} onChange={e => setMemberForm({...memberForm, gender: e.target.value})}>
+                                    <select value={memberForm.gender} onChange={e => setMemberForm({ ...memberForm, gender: e.target.value })}>
                                         <option value="nam">{t.male || "Nam"}</option>
                                         <option value="nu">{t.female || "Nữ"}</option>
                                     </select>
@@ -534,17 +552,17 @@ const HouseholdDetail = ({ householdId, onBack, lang, translations }) => {
                                 </div>
 
                                 <div className="floating-group">
-                                    <input type="date" value={memberForm.birthdate} onChange={e => setMemberForm({...memberForm, birthdate: e.target.value})} placeholder=" " />
+                                    <input type="date" value={memberForm.birthdate} onChange={e => setMemberForm({ ...memberForm, birthdate: e.target.value })} placeholder=" " />
                                     <label>{t.birthdate || "Ngày sinh"}</label>
                                 </div>
 
                                 <div className="floating-group">
-                                    <input value={memberForm.cccd} onChange={e => setMemberForm({...memberForm, cccd: e.target.value})} placeholder=" " />
+                                    <input value={memberForm.cccd} onChange={e => setMemberForm({ ...memberForm, cccd: e.target.value })} placeholder=" " />
                                     <label>{t.cccd || "CCCD"}</label>
                                 </div>
 
                                 <div className="floating-group">
-                                    <select value={memberForm.ethnicity || ''} onChange={e => setMemberForm({...memberForm, ethnicity: e.target.value})}>
+                                    <select value={memberForm.ethnicity || ''} onChange={e => setMemberForm({ ...memberForm, ethnicity: e.target.value })}>
                                         <option value=""></option>
                                         <option value="Kinh">Kinh</option>
                                         <option value="Tày">Tày</option>
@@ -559,32 +577,32 @@ const HouseholdDetail = ({ householdId, onBack, lang, translations }) => {
                                 </div>
 
                                 <div className="floating-group">
-                                    <input value={memberForm.occupation || ''} onChange={e => setMemberForm({...memberForm, occupation: e.target.value})} placeholder=" " />
+                                    <input value={memberForm.occupation || ''} onChange={e => setMemberForm({ ...memberForm, occupation: e.target.value })} placeholder=" " />
                                     <label>{t.occupation || "Nghề nghiệp"}</label>
                                 </div>
 
                                 <div className="floating-group full-width">
-                                    <input value={memberForm.residence_time || ''} onChange={e => setMemberForm({...memberForm, residence_time: e.target.value})} placeholder=" " />
+                                    <input value={memberForm.residence_time || ''} onChange={e => setMemberForm({ ...memberForm, residence_time: e.target.value })} placeholder=" " />
                                     <label>{t.residence_time || "Thời gian cư trú"}</label>
                                 </div>
 
                                 <div className="floating-group full-width">
-                                    <input value={memberForm.permanent_address || ''} onChange={e => setMemberForm({...memberForm, permanent_address: e.target.value})} placeholder=" " />
+                                    <input value={memberForm.permanent_address || ''} onChange={e => setMemberForm({ ...memberForm, permanent_address: e.target.value })} placeholder=" " />
                                     <label>{t.permanent_address || "Hộ khẩu thường trú"}</label>
                                 </div>
 
                                 <div className="floating-group full-width">
-                                    <input value={memberForm.current_address || ''} onChange={e => setMemberForm({...memberForm, current_address: e.target.value})} placeholder=" " />
+                                    <input value={memberForm.current_address || ''} onChange={e => setMemberForm({ ...memberForm, current_address: e.target.value })} placeholder=" " />
                                     <label>{t.current_address || "Nơi ở hiện tại"}</label>
                                 </div>
 
                                 <div className="floating-group">
-                                    <input value={memberForm.phone || ''} onChange={e => setMemberForm({...memberForm, phone: e.target.value})} placeholder=" " />
+                                    <input value={memberForm.phone || ''} onChange={e => setMemberForm({ ...memberForm, phone: e.target.value })} placeholder=" " />
                                     <label>{t.phone || "Số điện thoại"}</label>
                                 </div>
 
                                 <div className="floating-group">
-                                    <select value={memberForm.residence_status || ''} onChange={e => setMemberForm({...memberForm, residence_status: e.target.value})}>
+                                    <select value={memberForm.residence_status || ''} onChange={e => setMemberForm({ ...memberForm, residence_status: e.target.value })}>
                                         <option value=""></option>
                                         <option value="Thường trú">Thường trú</option>
                                         <option value="Tạm trú">Tạm trú</option>
@@ -596,11 +614,11 @@ const HouseholdDetail = ({ householdId, onBack, lang, translations }) => {
                                 {(editingMember && editingMember.relationship === 'Chủ hộ') && (
                                     <>
                                         <div className="floating-group">
-                                            <input value={memberForm.ward || ''} onChange={e => setMemberForm({...memberForm, ward: e.target.value})} placeholder=" " />
+                                            <input value={memberForm.ward || ''} onChange={e => setMemberForm({ ...memberForm, ward: e.target.value })} placeholder=" " />
                                             <label>{t.ward || "Ấp"}</label>
                                         </div>
                                         <div className="floating-group">
-                                            <input value={memberForm.house_type || ''} onChange={e => setMemberForm({...memberForm, house_type: e.target.value})} placeholder=" " />
+                                            <input value={memberForm.house_type || ''} onChange={e => setMemberForm({ ...memberForm, house_type: e.target.value })} placeholder=" " />
                                             <label>{t.house_type || "Dạng nhà"}</label>
                                         </div>
                                     </>
@@ -620,7 +638,7 @@ const HouseholdDetail = ({ householdId, onBack, lang, translations }) => {
                 </div>
             </div>
 
-            <ConfirmationModal 
+            <ConfirmationModal
                 isOpen={confirmModal.isOpen}
                 title={confirmModal.title}
                 message={confirmModal.message}

@@ -1,140 +1,103 @@
-// Frontend-only data service using localStorage
+import api from '../api';
+
 const H_KEY = 'households';
 const M_KEY = 'members';
 
-function read(key) {
+// Helper to keep old sync logic accessible for one-time manual sync if needed
+function readLocal(key) {
   const raw = localStorage.getItem(key);
   return raw ? JSON.parse(raw) : [];
 }
 
-function write(key, value) {
-  localStorage.setItem(key, JSON.stringify(value));
-}
+/**
+ * Syncs any data currently sitting in localStorage to the real backend.
+ * Meant to be called once by App.jsx or manually if migrating.
+ */
+export async function syncLocalDataToServer() {
+  const localHouseholds = readLocal(H_KEY);
+  const localMembers = readLocal(M_KEY);
 
-function genId(prefix = '') {
-  return `${prefix}${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
-}
+  if (localHouseholds.length === 0 && localMembers.length === 0) {
+    return { success: true, message: "Không có dữ liệu cũ cần đồng bộ." };
+  }
 
-// Seed minimal data if empty
-function ensureSeed() {
-  const households = read(H_KEY);
-  if (households.length === 0) {
-    const seedHousehold = {
-      id: genId('hh_'),
-      head_name: 'Nguyễn Văn A',
-      cccd: '012345678901',
-      birthdate: '1980-01-01',
-      gender: 'nam',
-      phone: '0900000000',
-      address: 'Ấp 1, Xã ABC',
-      ward: 'Ấp 1',
-      house_type: 'Nhà cấp 4',
-      residence_type: 'Thường trú',
-      ethnicity: 'Kinh',
-      job: 'Nông dân',
-      residence_time: '10 năm',
-      permanent_address: 'Ấp 1, Xã ABC',
-      current_address: 'Ấp 1, Xã ABC'
-    };
-    const seedHousehold2 = {
-      id: genId('hh_'),
-      head_name: 'Trần Thị B',
-      cccd: '987654321000',
-      birthdate: '1985-05-12',
-      gender: 'nữ',
-      phone: '0911111111',
-      address: 'Ấp 2, Xã DEF',
-      ward: 'Ấp 2',
-      house_type: 'Nhà kiên cố',
-      residence_type: 'Tạm trú',
-      ethnicity: 'Kinh',
-      job: 'Công nhân',
-      residence_time: '3 năm',
-      permanent_address: 'Ấp 5, Xã XYZ',
-      current_address: 'Ấp 2, Xã DEF'
-    };
-    const seedHousehold3 = {
-      id: genId('hh_'),
-      head_name: 'Phạm Văn C',
-      cccd: '123123123123',
-      birthdate: '1972-07-07',
-      gender: 'nam',
-      phone: '0922222222',
-      address: 'Ấp 3, Xã GHI',
-      ward: 'Ấp 3',
-      house_type: 'Nhà bán kiên cố',
-      residence_type: 'Thường trú',
-      ethnicity: 'Kinh',
-      job: 'Thợ hồ',
-      residence_time: '20 năm',
-      permanent_address: 'Ấp 3, Xã GHI',
-      current_address: 'Ấp 3, Xã GHI'
-    };
-    write(H_KEY, [seedHousehold, seedHousehold2, seedHousehold3]);
-    write(M_KEY, []);
+  try {
+    let syncedCount = 0;
+    // We sync households first
+    for (const h of localHouseholds) {
+      // Create household on server
+      const { id, ...dataToSync } = h; // remove the fake local 'hh_xxx' ID
+      const resHousehold = await api.post('/households', dataToSync);
+      const newHouseholdId = resHousehold.data.id;
+
+      // Find members that belonged to this household
+      const membersToSync = localMembers.filter(m => m.household_id === h.id);
+      for (const m of membersToSync) {
+        const { id: mId, household_id, ...memberData } = m;
+        await api.post('/members', { ...memberData, household_id: newHouseholdId });
+      }
+      syncedCount++;
+    }
+
+    // After success, clear local storage so it doesn't run again
+    localStorage.removeItem(H_KEY);
+    localStorage.removeItem(M_KEY);
+
+    return { success: true, message: `Đã đồng bộ thành công ${syncedCount} hộ gia đình từ máy lên máy chủ!` };
+  } catch (err) {
+    console.error("Lỗi đồng bộ dữ liệu cũ:", err);
+    return { success: false, message: "Lỗi đồng bộ dữ liệu cũ: " + err.message };
   }
 }
 
-ensureSeed();
+// ==========================================
+// REAL API IMPLEMENTATION
+// ==========================================
 
-export function getHouseholds() {
-  return read(H_KEY);
+export async function getHouseholds() {
+  const res = await api.get('/households');
+  return res.data;
 }
 
-export function getHouseholdById(id) {
-  return read(H_KEY).find(h => h.id === id) || null;
+export async function getHouseholdById(id) {
+  // Current server API doesn't have a specific GET /households/:id, 
+  // so we fetch all and find, or we can just hope it's not too large.
+  // For large scale, the backend needs GET /households/:id
+  const res = await api.get('/households');
+  return res.data.find(h => h.id == id) || null;
 }
 
-export function createHousehold(data) {
-  const households = read(H_KEY);
-  const id = genId('hh_');
-  const newH = { id, ...data };
-  households.push(newH);
-  write(H_KEY, households);
-  return newH;
+export async function createHousehold(data) {
+  const res = await api.post('/households', data);
+  return res.data;
 }
 
-export function updateHousehold(id, patch) {
-  const households = read(H_KEY);
-  const idx = households.findIndex(h => h.id === id);
-  if (idx === -1) return null;
-  households[idx] = { ...households[idx], ...patch };
-  write(H_KEY, households);
-  return households[idx];
+export async function updateHousehold(id, patch) {
+  const res = await api.put(`/households/${id}`, patch);
+  return res.data;
 }
 
-export function deleteHousehold(id) {
-  const households = read(H_KEY).filter(h => h.id !== id);
-  write(H_KEY, households);
-  const members = read(M_KEY).filter(m => m.household_id !== id);
-  write(M_KEY, members);
+export async function deleteHousehold(id) {
+  await api.delete(`/households/${id}`);
   return true;
 }
 
-export function getMembersByHousehold(householdId) {
-  return read(M_KEY).filter(m => m.household_id === householdId);
+export async function getMembersByHousehold(householdId) {
+  const res = await api.get(`/households/${householdId}/members`);
+  return res.data;
 }
 
-export function createMember(data) {
-  const members = read(M_KEY);
-  const id = genId('mb_');
-  const newM = { id, ...data };
-  members.push(newM);
-  write(M_KEY, members);
-  return newM;
+export async function createMember(data) {
+  const res = await api.post('/members', data);
+  return res.data;
 }
 
-export function updateMember(id, patch) {
-  const members = read(M_KEY);
-  const idx = members.findIndex(m => m.id === id);
-  if (idx === -1) return null;
-  members[idx] = { ...members[idx], ...patch };
-  write(M_KEY, members);
-  return members[idx];
+export async function updateMember(id, patch) {
+  const res = await api.put(`/members/${id}`, patch);
+  return res.data;
 }
 
-export function deleteMember(id) {
-  const members = read(M_KEY).filter(m => m.id !== id);
-  write(M_KEY, members);
+export async function deleteMember(id) {
+  await api.delete(`/members/${id}`);
   return true;
 }

@@ -1,0 +1,1 @@
+{"name":"Quản lý Hộ Khẩu","short_name":"Hộ Khẩu","description":"Ứng dụng quản lý nhân khẩu, hộ khẩu","start_url":"/","display":"standalone","background_color":"#ffffff","theme_color":"#ffffff","lang":"en","scope":"/","icons":[{"src":"vite.svg","sizes":"192x192","type":"image/svg+xml"},{"src":"vite.svg","sizes":"512x512","type":"image/svg+xml"}]}

@@ -1,0 +1,14 @@
+{
+	"appId": "com.household.app",
+	"appName": "Quan Ly Ho Khau",
+	"webDir": "dist",
+	"plugins": {
+		"GoogleAuth": {
+			"scopes": [
+				"https://www.googleapis.com/auth/spreadsheets"
+			],
+			"serverClientId": "105264513863-b5odo8o74n65f3kc0mgqmfv6ptq8l627.apps.googleusercontent.com",
+			"forceCodeForRefreshToken": true
+		}
+	}
+}

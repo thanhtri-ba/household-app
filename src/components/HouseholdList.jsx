@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getHouseholds, createHousehold, deleteHousehold, getMembersByHousehold } from '../utils/localDataService';
 import { getHouseholdDataArray } from '../utils/excelGenerator';
+import { exportMultipleToExcel } from '../utils/excelExportService';
 import { loadGoogleScripts, handleGoogleLogin, createSpreadsheet, addSheetToSpreadsheet, writeDataToSheet, formatSheet, getSpreadsheet, clearSheet, readSheetData, deleteSheet } from '../utils/googleSheetsService';
 import ConfirmationModal from './ConfirmationModal';
 
@@ -16,7 +17,7 @@ const HouseholdList = ({ onViewDetails, lang, translations }) => {
     const [showAddModal, setShowAddModal] = useState(false);
     const [isGoogleReady, setIsGoogleReady] = useState(false);
     const [sheetId, setSheetId] = useState(localStorage.getItem('household_g_sheet_id'));
-    
+
     // Confirmation Modal State
     const [confirmModal, setConfirmModal] = useState({
         isOpen: false,
@@ -35,7 +36,7 @@ const HouseholdList = ({ onViewDetails, lang, translations }) => {
 
     const fetchHouseholds = async () => {
         try {
-            let data = getHouseholds();
+            let data = await getHouseholds();
             if (searchParams.head_name) data = data.filter(h => h.head_name.toLowerCase().includes(searchParams.head_name.toLowerCase()));
             if (searchParams.cccd) data = data.filter(h => h.cccd && h.cccd.includes(searchParams.cccd));
             if (searchParams.phone) data = data.filter(h => h.phone && h.phone.includes(searchParams.phone));
@@ -81,7 +82,7 @@ const HouseholdList = ({ onViewDetails, lang, translations }) => {
 
     const handleDeleteSelected = async () => {
         if (selectedIds.length === 0) return;
-        
+
         setConfirmModal({
             isOpen: true,
             title: t.confirm_delete_title || "Xác nhận xóa",
@@ -93,7 +94,7 @@ const HouseholdList = ({ onViewDetails, lang, translations }) => {
                     for (let id of selectedIds) {
                         await deleteHousehold(id);
                     }
-                    
+
                     // Ask for Google Sheet deletion
                     if (isGoogleReady) {
                         const spreadsheetId = localStorage.getItem('household_g_sheet_id');
@@ -102,18 +103,18 @@ const HouseholdList = ({ onViewDetails, lang, translations }) => {
                                 await handleGoogleLogin();
                                 const spreadsheet = await getSpreadsheet(spreadsheetId);
                                 const sheets = spreadsheet.sheets || [];
-                                
+
                                 for (let id of selectedIds) {
                                     const household = households.find(h => h.id === id);
                                     if (household) {
                                         let baseName = household.head_name ? household.head_name.trim() : `Household_${household.id}`;
                                         let sheetName = baseName.replace(/[\\/?*[\]:]/g, "").substring(0, 30);
-                                        
+
                                         let targetSheet = sheets.find(s => s.properties.title === sheetName);
                                         if (!targetSheet) {
-                                                targetSheet = sheets.find(s => s.properties.title === `${sheetName}_${household.id}`);
+                                            targetSheet = sheets.find(s => s.properties.title === `${sheetName}_${household.id}`);
                                         }
-                                        
+
                                         if (targetSheet) {
                                             await deleteSheet(spreadsheetId, targetSheet.properties.sheetId);
                                         }
@@ -145,43 +146,43 @@ const HouseholdList = ({ onViewDetails, lang, translations }) => {
             if (isGoogleReady) {
                 const spreadsheetId = localStorage.getItem('household_g_sheet_id');
                 if (spreadsheetId) {
-                     try {
-                         await handleGoogleLogin();
-                         const spreadsheet = await getSpreadsheet(spreadsheetId);
-                         let baseName = createdHousehold.head_name ? createdHousehold.head_name.trim() : `Household_${createdHousehold.id}`;
-                         let sheetName = baseName.replace(/[\\/?*[\]:]/g, "").substring(0, 30);
-                         
-                         const existing = spreadsheet.sheets.find(s => s.properties.title === sheetName);
-                         if (existing) {
-                             sheetName = `${sheetName}_${createdHousehold.id}`;
-                         }
-                         
-                         const sheetId = await addSheetToSpreadsheet(spreadsheetId, sheetName);
-                         
-                         // Create Virtual Head Member
-                         const headMember = {
-                             id: `head_${createdHousehold.id}`,
-                             name: createdHousehold.head_name,
-                             cccd: createdHousehold.cccd,
-                             birthdate: createdHousehold.birthdate,
-                             gender: createdHousehold.gender,
-                             ethnicity: createdHousehold.ethnicity,
-                             occupation: createdHousehold.job,
-                             residence_time: createdHousehold.residence_time,
-                             permanent_address: createdHousehold.permanent_address,
-                             current_address: createdHousehold.address,
-                             phone: createdHousehold.phone,
-                             relationship: 'Chủ hộ',
-                             household_id: createdHousehold.id
-                         };
-                         
-                         const sheetData = getHouseholdDataArray(createdHousehold, [headMember]);
-                         await writeDataToSheet(spreadsheetId, sheetName, sheetData);
-                         await formatSheet(spreadsheetId, sheetId, sheetData.length);
-                         
-                     } catch (err) {
-                         console.error("Error creating sheet for new household", err);
-                     }
+                    try {
+                        await handleGoogleLogin();
+                        const spreadsheet = await getSpreadsheet(spreadsheetId);
+                        let baseName = createdHousehold.head_name ? createdHousehold.head_name.trim() : `Household_${createdHousehold.id}`;
+                        let sheetName = baseName.replace(/[\\/?*[\]:]/g, "").substring(0, 30);
+
+                        const existing = spreadsheet.sheets.find(s => s.properties.title === sheetName);
+                        if (existing) {
+                            sheetName = `${sheetName}_${createdHousehold.id}`;
+                        }
+
+                        const sheetId = await addSheetToSpreadsheet(spreadsheetId, sheetName);
+
+                        // Create Virtual Head Member
+                        const headMember = {
+                            id: `head_${createdHousehold.id}`,
+                            name: createdHousehold.head_name,
+                            cccd: createdHousehold.cccd,
+                            birthdate: createdHousehold.birthdate,
+                            gender: createdHousehold.gender,
+                            ethnicity: createdHousehold.ethnicity,
+                            occupation: createdHousehold.job,
+                            residence_time: createdHousehold.residence_time,
+                            permanent_address: createdHousehold.permanent_address,
+                            current_address: createdHousehold.address,
+                            phone: createdHousehold.phone,
+                            relationship: 'Chủ hộ',
+                            household_id: createdHousehold.id
+                        };
+
+                        const sheetData = getHouseholdDataArray(createdHousehold, [headMember]);
+                        await writeDataToSheet(spreadsheetId, sheetName, sheetData);
+                        await formatSheet(spreadsheetId, sheetId, sheetData.length);
+
+                    } catch (err) {
+                        console.error("Error creating sheet for new household", err);
+                    }
                 }
             }
 
@@ -200,8 +201,11 @@ const HouseholdList = ({ onViewDetails, lang, translations }) => {
 
     const exportGoogleSheets = async () => {
         if (!isGoogleReady) {
-            alert("Đang tải thư viện Google, vui lòng thử lại sau vài giây...");
-            return;
+            const success = await loadGoogleScripts(() => setIsGoogleReady(true));
+            if (!success) {
+                alert("Lỗi: Không thể tải thư viện Google.\nVui lòng kiểm tra kết nối Internet của bạn và thử lại.");
+                return;
+            }
         }
 
         if (households.length === 0) {
@@ -210,7 +214,7 @@ const HouseholdList = ({ onViewDetails, lang, translations }) => {
         }
 
         // Determine which households to export
-        const householdsToExport = selectedIds.length > 0 
+        const householdsToExport = selectedIds.length > 0
             ? households.filter(h => selectedIds.includes(h.id))
             : households;
 
@@ -228,7 +232,7 @@ const HouseholdList = ({ onViewDetails, lang, translations }) => {
                 try {
                     // 1. Login
                     await handleGoogleLogin();
-                    
+
                     // 2. Check for existing spreadsheet
                     let spreadsheetId = localStorage.getItem('household_g_sheet_id');
                     let spreadsheet;
@@ -236,12 +240,12 @@ const HouseholdList = ({ onViewDetails, lang, translations }) => {
 
                     // Force Create New if linked, with confirmation
                     if (spreadsheetId) {
-                         if (confirm("Hệ thống đang liên kết với một Google Sheet. Bạn có muốn tạo một file MỚI và thay thế liên kết hiện tại không?\n(Chọn Cancel để hủy thao tác)")) {
-                             spreadsheetId = null;
-                         } else {
-                             setConfirmModal(prev => ({ ...prev, isOpen: false }));
-                             return;
-                         }
+                        if (confirm("Hệ thống đang liên kết với một Google Sheet. Bạn có muốn tạo một file MỚI và thay thế liên kết hiện tại không?\n(Chọn Cancel để hủy thao tác)")) {
+                            spreadsheetId = null;
+                        } else {
+                            setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                            return;
+                        }
                     }
 
                     if (!spreadsheetId) {
@@ -266,7 +270,7 @@ const HouseholdList = ({ onViewDetails, lang, translations }) => {
                     // 3. Loop and add/update sheets
                     for (const household of householdsToExport) {
                         // Fetch members
-                        let members = getMembersByHousehold(household.id);
+                        let members = await getMembersByHousehold(household.id);
 
                         // Add Head if missing
                         const hasHead = members.some(m => m.relationship === 'Chủ hộ');
@@ -296,7 +300,7 @@ const HouseholdList = ({ onViewDetails, lang, translations }) => {
                         let baseName = household.head_name ? household.head_name.trim() : `Household_${household.id}`;
                         let sheetName = baseName.replace(/[\\/?*[\]:]/g, "").substring(0, 30);
                         if (!sheetName) sheetName = `Sheet_${household.id}`;
-                        
+
                         let targetSheetId;
 
                         if (existingSheets[sheetName] !== undefined) {
@@ -330,9 +334,9 @@ const HouseholdList = ({ onViewDetails, lang, translations }) => {
                                 // Fallback for duplicate names (collision with another household or renamed sheet)
                                 const altName = `${sheetName}_${household.id}`;
                                 if (existingSheets[altName] !== undefined) {
-                                     targetSheetId = existingSheets[altName];
-                                     await clearSheet(spreadsheetId, targetSheetId);
-                                     sheetName = altName;
+                                    targetSheetId = existingSheets[altName];
+                                    await clearSheet(spreadsheetId, targetSheetId);
+                                    sheetName = altName;
                                 } else {
                                     const addRes = await addSheetToSpreadsheet(spreadsheetId, altName);
                                     targetSheetId = addRes.replies[0].addSheet.properties.sheetId;
@@ -353,15 +357,12 @@ const HouseholdList = ({ onViewDetails, lang, translations }) => {
                     setConfirmModal(prev => ({ ...prev, isOpen: false }));
 
                 } catch (error) {
-                    console.error("Google Sheet Export Error:", error);
-                    let msg = "Có lỗi xảy ra!";
-                    if (error.message === "Google Scripts not loaded") msg = "Thư viện chưa tải xong.";
-                    if (error.result && error.result.error && error.result.error.code === 403) msg = "Bạn không có quyền truy cập bảng tính này.";
-                    if (error.error === "access_denied") msg = "Bạn đã từ chối cấp quyền.";
-                    if (JSON.stringify(error).includes("API key not valid")) {
-                        msg = "Chưa cấu hình API Key trong mã nguồn.";
+                    console.error("Export Error:", error);
+                    let errMsg = error.message || error;
+                    if (typeof error === 'object' && error.result && error.result.error) {
+                        errMsg = error.result.error.message;
                     }
-                    alert(msg);
+                    alert(`Lỗi: ${errMsg}`);
                     setConfirmModal(prev => ({ ...prev, isOpen: false }));
                 }
             }
@@ -432,12 +433,52 @@ const HouseholdList = ({ onViewDetails, lang, translations }) => {
 
             <div className="table-container">
                 <div className="table-toolbar">
+                    <button className="btn btn-excel" onClick={async () => {
+                        const householdsToExport = selectedIds.length > 0
+                            ? households.filter(h => selectedIds.includes(h.id))
+                            : households;
+
+                        if (householdsToExport.length === 0) {
+                            alert(t.no_data || "Không có dữ liệu");
+                            return;
+                        }
+
+                        // We need Promise.all since getMembersByHousehold is now async
+                        const exportData = await Promise.all(householdsToExport.map(async (h) => {
+                            let members = await getMembersByHousehold(h.id);
+                            const hasHead = members.some(m => m.relationship === 'Chủ hộ');
+                            if (!hasHead) {
+                                const headMember = {
+                                    id: `head_${h.id}`,
+                                    name: h.head_name,
+                                    cccd: h.cccd,
+                                    birthdate: h.birthdate,
+                                    gender: h.gender,
+                                    ethnicity: h.ethnicity,
+                                    occupation: h.job,
+                                    permanent_address: h.permanent_address,
+                                    current_address: h.address,
+                                    phone: h.phone,
+                                    relationship: 'Chủ hộ',
+                                    household_id: h.id,
+                                    isVirtualHead: true
+                                };
+                                members = [headMember, ...members];
+                            }
+                            const dataArray = getHouseholdDataArray(h, members);
+                            return { household: h, members, dataArray };
+                        }));
+
+                        exportMultipleToExcel(exportData, `Danh_sach_ho_khau_${new Date().toLocaleDateString('vi-VN').replace(/\//g, '-')}`);
+                    }} style={{ backgroundColor: '#217346', marginRight: '10px' }}>
+                        Xuất Excel (Offline)
+                    </button>
                     {sheetId && (
-                        <button className="btn btn-excel" onClick={() => window.open(`https://docs.google.com/spreadsheets/d/${sheetId}`, '_blank')} style={{backgroundColor: '#0F9D58', marginRight: '10px'}}>
+                        <button className="btn btn-excel" onClick={() => window.open(`https://docs.google.com/spreadsheets/d/${sheetId}`, '_blank')} style={{ backgroundColor: '#0F9D58', marginRight: '10px' }}>
                             {t.open_sheet || "Mở Google Sheet"}
                         </button>
                     )}
-                    <button className="btn btn-excel" onClick={exportGoogleSheets} style={{backgroundColor: '#1a73e8', marginRight: '10px'}}>
+                    <button className="btn btn-excel" onClick={exportGoogleSheets} style={{ backgroundColor: '#1a73e8', marginRight: '10px' }}>
                         {t.export_new || "Xuất file mới"}
                     </button>
                     <button className="btn btn-add" onClick={() => setShowAddModal(true)}>{t.add_household}</button>
@@ -447,7 +488,7 @@ const HouseholdList = ({ onViewDetails, lang, translations }) => {
                     <table className="data-table">
                         <thead>
                             <tr>
-                                <th style={{width: '40px'}}><input type="checkbox" onChange={handleSelectAll} checked={selectedIds.length === displayedHouseholds.length && displayedHouseholds.length > 0} /></th>
+                                <th style={{ width: '40px' }}><input type="checkbox" onChange={handleSelectAll} checked={selectedIds.length === displayedHouseholds.length && displayedHouseholds.length > 0} /></th>
                                 <th>{t.head_name}</th>
                                 <th>{t.cccd}</th>
                                 <th>{t.phone}</th>
@@ -501,7 +542,7 @@ const HouseholdList = ({ onViewDetails, lang, translations }) => {
                         {/* Section 1 */}
                         <div className="form-group-custom">
                             <label className="custom-label">{t.residence_type}</label>
-                            <select value={newHousehold.residence_type} onChange={e => setNewHousehold({...newHousehold, residence_type: e.target.value})}>
+                            <select value={newHousehold.residence_type} onChange={e => setNewHousehold({ ...newHousehold, residence_type: e.target.value })}>
                                 <option value="">{t.select_residence_type}</option>
                                 <option value="1">{t.permanent}</option>
                                 <option value="2">{t.temporary}</option>
@@ -509,11 +550,11 @@ const HouseholdList = ({ onViewDetails, lang, translations }) => {
                         </div>
                         <div className="form-group-custom">
                             <label className="custom-label">{t.house_type}</label>
-                            <input value={newHousehold.house_type} onChange={e => setNewHousehold({...newHousehold, house_type: e.target.value})} placeholder={t.house_type} />
+                            <input value={newHousehold.house_type} onChange={e => setNewHousehold({ ...newHousehold, house_type: e.target.value })} placeholder={t.house_type} />
                         </div>
                         <div className="form-group-custom">
                             <label className="custom-label">{t.ward}</label>
-                            <select value={newHousehold.ward} onChange={e => setNewHousehold({...newHousehold, ward: e.target.value})}>
+                            <select value={newHousehold.ward} onChange={e => setNewHousehold({ ...newHousehold, ward: e.target.value })}>
                                 <option value="">{t.select_ward}</option>
                                 <option value="Ấp 1">Ấp 1</option>
                                 <option value="Ấp 2">Ấp 2</option>
@@ -522,7 +563,7 @@ const HouseholdList = ({ onViewDetails, lang, translations }) => {
                         </div>
                         <div className="form-group-custom">
                             <label className="custom-label">{t.representative}</label>
-                            <input value={newHousehold.representative} onChange={e => setNewHousehold({...newHousehold, representative: e.target.value})} placeholder={t.representative} />
+                            <input value={newHousehold.representative} onChange={e => setNewHousehold({ ...newHousehold, representative: e.target.value })} placeholder={t.representative} />
                         </div>
 
                         {/* Section 2 Header */}
@@ -531,7 +572,7 @@ const HouseholdList = ({ onViewDetails, lang, translations }) => {
                         {/* Section 2 Fields */}
                         <div className="form-group-custom">
                             <label className="custom-label">{t.fullname}</label>
-                            <input required value={newHousehold.head_name} onChange={e => setNewHousehold({...newHousehold, head_name: e.target.value})} placeholder={t.fullname} />
+                            <input required value={newHousehold.head_name} onChange={e => setNewHousehold({ ...newHousehold, head_name: e.target.value })} placeholder={t.fullname} />
                         </div>
                         <div className="form-group-custom">
                             <label className="custom-label">{t.head_relation}</label>
@@ -539,7 +580,7 @@ const HouseholdList = ({ onViewDetails, lang, translations }) => {
                         </div>
                         <div className="form-group-custom">
                             <label className="custom-label">{t.gender}</label>
-                            <select value={newHousehold.gender} onChange={e => setNewHousehold({...newHousehold, gender: e.target.value})}>
+                            <select value={newHousehold.gender} onChange={e => setNewHousehold({ ...newHousehold, gender: e.target.value })}>
                                 <option value="">{t.gender}</option>
                                 <option value="Nam">{t.male}</option>
                                 <option value="Nữ">{t.female}</option>
@@ -547,15 +588,15 @@ const HouseholdList = ({ onViewDetails, lang, translations }) => {
                         </div>
                         <div className="form-group-custom">
                             <label className="custom-label">{t.birthdate}</label>
-                            <input type="date" value={newHousehold.birthdate} onChange={e => setNewHousehold({...newHousehold, birthdate: e.target.value})} placeholder={t.birthdate} />
+                            <input type="date" value={newHousehold.birthdate} onChange={e => setNewHousehold({ ...newHousehold, birthdate: e.target.value })} placeholder={t.birthdate} />
                         </div>
                         <div className="form-group-custom">
                             <label className="custom-label">{t.cccd}</label>
-                            <input value={newHousehold.cccd} onChange={e => setNewHousehold({...newHousehold, cccd: e.target.value})} placeholder={t.cccd} />
+                            <input value={newHousehold.cccd} onChange={e => setNewHousehold({ ...newHousehold, cccd: e.target.value })} placeholder={t.cccd} />
                         </div>
                         <div className="form-group-custom">
                             <label className="custom-label">{t.ethnicity}</label>
-                            <select value={newHousehold.ethnicity} onChange={e => setNewHousehold({...newHousehold, ethnicity: e.target.value})}>
+                            <select value={newHousehold.ethnicity} onChange={e => setNewHousehold({ ...newHousehold, ethnicity: e.target.value })}>
                                 <option value="">{t.ethnicity}</option>
                                 <option value="Kinh">Kinh</option>
                                 <option value="Khác">Khác</option>
@@ -563,27 +604,27 @@ const HouseholdList = ({ onViewDetails, lang, translations }) => {
                         </div>
                         <div className="form-group-custom">
                             <label className="custom-label">{t.occupation}</label>
-                            <input value={newHousehold.job} onChange={e => setNewHousehold({...newHousehold, job: e.target.value})} placeholder={t.occupation} />
+                            <input value={newHousehold.job} onChange={e => setNewHousehold({ ...newHousehold, job: e.target.value })} placeholder={t.occupation} />
                         </div>
                         <div className="form-group-custom">
                             <label className="custom-label">{t.residence_time}</label>
-                            <input value={newHousehold.residence_time} onChange={e => setNewHousehold({...newHousehold, residence_time: e.target.value})} placeholder={t.residence_time} />
+                            <input value={newHousehold.residence_time} onChange={e => setNewHousehold({ ...newHousehold, residence_time: e.target.value })} placeholder={t.residence_time} />
                         </div>
                         <div className="form-group-custom">
                             <label className="custom-label">{t.permanent_address}</label>
-                            <input value={newHousehold.permanent_address} onChange={e => setNewHousehold({...newHousehold, permanent_address: e.target.value})} placeholder={t.permanent_address} />
+                            <input value={newHousehold.permanent_address} onChange={e => setNewHousehold({ ...newHousehold, permanent_address: e.target.value })} placeholder={t.permanent_address} />
                         </div>
                         <div className="form-group-custom">
                             <label className="custom-label">{t.current_address}</label>
-                            <input value={newHousehold.address} onChange={e => setNewHousehold({...newHousehold, address: e.target.value})} placeholder={t.current_address} />
+                            <input value={newHousehold.address} onChange={e => setNewHousehold({ ...newHousehold, address: e.target.value })} placeholder={t.current_address} />
                         </div>
                         <div className="form-group-custom">
                             <label className="custom-label">{t.phone}</label>
-                            <input value={newHousehold.phone} onChange={e => setNewHousehold({...newHousehold, phone: e.target.value})} placeholder={t.phone} />
+                            <input value={newHousehold.phone} onChange={e => setNewHousehold({ ...newHousehold, phone: e.target.value })} placeholder={t.phone} />
                         </div>
                         <div className="form-group-custom">
                             <label className="custom-label">{t.residence_status}</label>
-                            <select value={newHousehold.residence_status} onChange={e => setNewHousehold({...newHousehold, residence_status: e.target.value})}>
+                            <select value={newHousehold.residence_status} onChange={e => setNewHousehold({ ...newHousehold, residence_status: e.target.value })}>
                                 <option value="">{t.residence_status}</option>
                                 <option value="Thường trú">Thường trú</option>
                                 <option value="Tạm trú">Tạm trú</option>
@@ -598,7 +639,7 @@ const HouseholdList = ({ onViewDetails, lang, translations }) => {
                 </div>
             </div>
 
-            <ConfirmationModal 
+            <ConfirmationModal
                 isOpen={confirmModal.isOpen}
                 title={confirmModal.title}
                 message={confirmModal.message}
